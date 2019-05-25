@@ -134,6 +134,11 @@ public class TerrainExport
         meshData.resolusion = terrainData.heightmapResolution;
         //采样高度信息
         SamplingHeightMap(terrainData, ref meshData);
+        //没有地形起伏，降低网格分辨率
+        if (meshData.indexes.Count==0)
+        {
+            meshData.resolusion = 33;
+        }
         //采样控制贴图
         bool useAphla = terrainData.splatPrototypes.Length % 4 == 0; //基础图素是4的倍数用RGBA
         List<Color[]> controlMapColors = SamplingControlMap(terrainData, useAphla);
@@ -159,9 +164,9 @@ public class TerrainExport
             for (int j = 0; j < terrainData.heightmapHeight; j++)
             {
                 float height = datas[i, j] * terrainData.size.y - TERRAIN_HEIGHT;
-                if (height > 0.01 || height < -0.01)
+                if (height > 0.01 || height < -0.001)
                 {
-                    int index = j * terrainData.heightmapWidth + i;
+                    int index = i * terrainData.heightmapWidth + j;
                     meshData.indexes.Add(index);
                     meshData.heights.Add(height);
                 }

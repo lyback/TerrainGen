@@ -9,11 +9,11 @@ public class TerrainRoot : RenderDynamicMesh
     TerrainAssets m_asset;
     Dictionary<string, TerrainMeshData> m_meshData = new Dictionary<string, TerrainMeshData>();
     public GameObject RootTerrain;                      // 场景根节点
-#region 显示属性
+    #region 显示属性
     float m_visibleSize;					            // 显示宽度
     float m_visibleHalfSize;                            // 显示宽度Half
-#endregion
-#region 临时变量
+    #endregion
+    #region 临时变量
     TerrainMeshData m_terrainMeshData;                  //当前地形网格数据
     int m_maxResolusion;                                //当前地形网格最大分辨率
     int m_visibleVerticeCount;                          //生成网格一行的顶点数量
@@ -31,9 +31,10 @@ public class TerrainRoot : RenderDynamicMesh
     int m_curVerticeIndex;                //当前顶点索引
     Dictionary<int, int> m_curVerticeCache = new Dictionary<int, int>(); //当前顶点索引缓存
     //--------end------//
-    int m_lastPos_x;
-    int m_lastPos_z;
-#endregion
+    int m_lastMoveToVPos_x;
+    int m_lastMoveToVPos_y;
+    bool m_needMoveMesh;
+    #endregion
     protected override GameObject Root
     {
         get
@@ -46,35 +47,22 @@ public class TerrainRoot : RenderDynamicMesh
     {
         m_asset = config;
         m_visibleSize = size;
-        m_visibleHalfSize = size / 2f;
 
         m_uvDis = 1f / m_asset.terrain_Size;
 
     }
 
-    public void MoveTo(float x, float z)
+    public void MoveTo(float x, float z, float dx, float dz)
     {
-        x = Mathf.Floor(x);
-        z = Mathf.Floor(z);
-        if (m_lastPos_x == x && m_lastPos_z == z)
-        {
-            return;
-        }
-
         ClearMeshData();
-        m_maxResolusion = GetMaxResolusion(x, z)-1;
-        m_verticeDis = m_asset.terrain_Size * 1f / m_maxResolusion;
-        m_posDis = m_maxResolusion * 1f / m_asset.terrain_Size * 1f;
-        m_visibleVerticeCount = Mathf.CeilToInt(m_posDis * m_visibleSize);
 
         m_moveToPoint.x = x;
         m_moveToPoint.z = z;
-        m_moveToVecticePoint.x = Mathf.FloorToInt(x / m_verticeDis);
-        m_moveToVecticePoint.y = Mathf.FloorToInt(z / m_verticeDis);
 
-        MakeMesh();
+        MakeMesh(x,z);
 
-        BuildMesh();
+        BuildMesh(dx,dz);
+
         // TestBuildMesh();
     }
     void TestBuildMesh()
@@ -103,7 +91,7 @@ public class TerrainRoot : RenderDynamicMesh
         m_mesh.SetTriangles(tri, 0);
         m_mesh.RecalculateNormals();
     }
-    void BuildMesh()
+    void BuildMesh(float dx, float dz)
     {
         m_mesh.Clear(false);
         m_mesh.subMeshCount = 4;
@@ -115,16 +103,32 @@ public class TerrainRoot : RenderDynamicMesh
         }
         m_mesh.RecalculateNormals();
 
-        RootTerrain.transform.localPosition = m_moveToPoint;
-    }
-    void MakeMesh()
-    {
-        for (int x = 0; x < m_visibleVerticeCount; ++x)
+        if (m_needMoveMesh)
         {
-            for (int y = 0; y < m_visibleVerticeCount; ++y)
-            {
+            m_moveToPoint.x -= m_visibleSize/2f+dx;
+            m_moveToPoint.z -= m_visibleSize/2f+dz;
+            RootTerrain.transform.localPosition = m_moveToPoint;
+        }
+    }
+    void MakeMesh(float x, float z)
+    {
+        m_maxResolusion = GetMaxResolusion(x, z) - 1;
 
-                MakeRectangle(x-m_visibleVerticeCount/2, y-m_visibleVerticeCount/2);
+        m_verticeDis = m_asset.terrain_Size * 1f / m_maxResolusion;
+        m_posDis = m_maxResolusion * 1f / m_asset.terrain_Size * 1f;
+        m_visibleVerticeCount = Mathf.CeilToInt(m_posDis * m_visibleSize);
+
+        m_moveToVecticePoint.x = Mathf.FloorToInt(x / m_verticeDis);
+        m_moveToVecticePoint.y = Mathf.FloorToInt(z / m_verticeDis);
+        m_needMoveMesh = !(m_moveToVecticePoint.x == m_lastMoveToVPos_x && m_moveToVecticePoint.y == m_lastMoveToVPos_y);
+        m_lastMoveToVPos_x = m_moveToVecticePoint.x;
+        m_lastMoveToVPos_y = m_moveToVecticePoint.y;
+
+        for (int v_x = 0; v_x < m_visibleVerticeCount; ++v_x)
+        {
+            for (int v_y = 0; v_y < m_visibleVerticeCount; ++v_y)
+            {
+                MakeRectangle(v_x, v_y);
             }
         }
         m_curTriIndex = 0;
@@ -168,8 +172,8 @@ public class TerrainRoot : RenderDynamicMesh
     void AddVertice(int x, int z, int index)
     {
         float height = GetVerticeHeight(x, z, m_terrainName);
-        float x_pos = x*m_verticeDis;
-        float z_pos = z*m_verticeDis;
+        float x_pos = x * m_verticeDis;
+        float z_pos = z * m_verticeDis;
         m_Vector3_temp.y = height;
         m_Vector3_temp.x = x_pos;
         m_Vector3_temp.z = z_pos;
@@ -177,13 +181,28 @@ public class TerrainRoot : RenderDynamicMesh
         m_uvs.Add(GetUV(x, z));
         INDEXS[index] = m_curVerticeIndex++;
     }
-    float GetVerticeHeight(float x, float y, string terrainName)
+    float GetVerticeHeight(int x, int y, string terrainName)
     {
         var heightMap = m_terrainMeshData.heightMap;
-        var resolusion = m_terrainMeshData.resolusion;
-        int index = (int)(x * m_posDis + y * m_posDis * resolusion);
+        if (heightMap == null)
+        {
+            return 0;
+        }
+        var curResolusion = m_terrainMeshData.resolusion;
+        int x_vpos = (x + m_moveToVecticePoint.x) % m_maxResolusion;
+        int y_vpos = (y + m_moveToVecticePoint.y) % m_maxResolusion;
+        if (x_vpos < 0)
+        {
+            x_vpos += m_maxResolusion;
+        }
+        if (y_vpos < 0)
+        {
+            y_vpos += m_maxResolusion;
+        }
+        float r = curResolusion * 1f / ((m_maxResolusion + 1f) * 1f);
+        int index = Mathf.FloorToInt(y_vpos * r * (m_maxResolusion+1f) + x_vpos * r);
         float height = 0f;
-        if (heightMap != null && heightMap.TryGetValue(index, out height))
+        if (heightMap.TryGetValue(index, out height))
         {
             return height;
         }
@@ -192,42 +211,44 @@ public class TerrainRoot : RenderDynamicMesh
     Vector2 GetUV(int x, int y)
     {
         int terrain_size = m_asset.terrain_Size;
-        m_Vector2_temp.x = (x + m_moveToVecticePoint.x)*1f / m_maxResolusion*1f;
-        m_Vector2_temp.y = (y + m_moveToVecticePoint.y)*1f / m_maxResolusion*1f;
+        m_Vector2_temp.x = (x + m_moveToVecticePoint.x) * 1f / m_maxResolusion * 1f;
+        m_Vector2_temp.y = (y + m_moveToVecticePoint.y) * 1f / m_maxResolusion * 1f;
         return m_Vector2_temp;
     }
     int GetMaxResolusion(float x, float y)
     {
-        int terrain_size = m_asset.terrain_Size;
         int column = m_asset.terrain_Column_Count;
-        float Left_x = (x - m_visibleHalfSize) / terrain_size;
-        float Top_y = (y + m_visibleHalfSize) / terrain_size;
-        float Bottom_y = (y - m_visibleHalfSize) / terrain_size;
-        float Rigth_x = (x + m_visibleHalfSize) / terrain_size;
+        int terrain_Size = m_asset.terrain_Size;
+        int Left_x = Mathf.FloorToInt(x / terrain_Size);
+        int Top_y = Mathf.FloorToInt((y + m_visibleSize) / terrain_Size);
+        int Bottom_y = Mathf.FloorToInt(y / terrain_Size);
+        int Rigth_x = Mathf.FloorToInt((x + m_visibleSize) / terrain_Size);
 
         int terrainCount = m_asset.terrainIndex.Length;
         //左上
-        int index = (int)(Top_y * column + Left_x);
+        int index = Top_y * column + Left_x;
         string leftTop_Name = GetTerrainNameByIndex(index);
         //右下
-        index = (int)(Bottom_y * column + Rigth_x);
+        index = Bottom_y * column + Rigth_x;
         string rightBottom_Name = GetTerrainNameByIndex(index);
         //判断是否在同一块地形内
         if (leftTop_Name == rightBottom_Name && !string.IsNullOrEmpty(leftTop_Name))
         {
+            Debug.Log("in one terrain:"+leftTop_Name);
             return GetTerrainMeshData_Resolusion(leftTop_Name);
         }
         //左下
-        index = (int)(Bottom_y * column + Left_x);
+        index = Bottom_y * column + Left_x;
         string leftBottom_Name = GetTerrainNameByIndex(index);
         //右上
-        index = (int)(Top_y * column + Rigth_x);
+        index = Top_y * column + Rigth_x;
         string rightTop_Name = GetTerrainNameByIndex(index);
         //获取最大分辨率
         int leftTop_resolusion = GetTerrainMeshData_Resolusion(leftTop_Name);
         int rightBottom_resolusion = GetTerrainMeshData_Resolusion(rightBottom_Name);
         int leftBottom_resolusion = GetTerrainMeshData_Resolusion(leftBottom_Name);
         int rightTop_resolusion = GetTerrainMeshData_Resolusion(rightTop_Name);
+        Debug.Log("leftTop_Name:"+leftTop_Name+",rightBottom_Name:"+rightBottom_Name+",leftBottom_Name:"+leftBottom_Name+",rightTop_Name:"+rightTop_Name);
         return Mathf.Max(leftTop_resolusion, rightBottom_resolusion, leftBottom_resolusion, rightTop_resolusion);
 
     }

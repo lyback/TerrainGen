@@ -1,2 +1,7 @@
 Library/
 Temp/
+obj/
+.vscode/
+Assembly-CSharp-Editor.csproj
+TerrainGen.sln
+Assembly-CSharp.csproj

@@ -6,6 +6,8 @@ using System.Collections.Generic;
 public class TestMove : MonoBehaviour
 {
     public TerrainRoot root;
+    public float dx = 0f;
+    public float dz = 0f;
     public int size = 1;
     void Start()
     {
@@ -13,14 +15,14 @@ public class TestMove : MonoBehaviour
         root = Instantiate(obj).GetComponent<TerrainRoot>();
         var config = AssetDatabase.LoadAssetAtPath<TerrainAssets>(string.Format("Assets/Data_oe/world/terrains/{0}.asset", "TerrainData"));
         root.Init(config, size);
-        
+
         var pos = transform.position;
-        root.MoveTo(pos.x, pos.z);
+        root.MoveTo(pos.x, pos.z, dx, dz);
     }
     void Update()
     {
         var pos = transform.position;
-        root.MoveTo(pos.x, pos.z);
+        root.MoveTo(pos.x, pos.z, dx, dz);
     }
 
 }
